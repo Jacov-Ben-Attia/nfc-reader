@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>קורא NFC</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, Roboto, Arial, sans-serif;
+    background: #111827;
+    color: #f3f4f6;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px 16px;
+    min-height: 100vh;
+    margin: 0;
+  }
+  h1 { font-size: 20px; margin-bottom: 8px; }
+  #status {
+    font-size: 14px;
+    color: #9ca3af;
+    margin-bottom: 20px;
+    text-align: center;
+  }
+  button {
+    background: #2563eb;
+    color: white;
+    border: none;
+    padding: 14px 28px;
+    font-size: 16px;
+    border-radius: 12px;
+    margin-bottom: 20px;
+    cursor: pointer;
+  }
+  button:disabled {
+    background: #4b5563;
+  }
+  #result {
+    width: 100%;
+    max-width: 480px;
+    background: #1f2937;
+    border-radius: 12px;
+    padding: 16px;
+    min-height: 120px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 15px;
+    line-height: 1.6;
+    border: 1px solid #374151;
+  }
+  .tag-line {
+    margin-bottom: 10px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #374151;
+  }
+  .label { color: #60a5fa; font-weight: bold; }
+</style>
+</head>
+<body>
+
+<h1>📡 קורא תגי NFC</h1>
+<div id="status">לחץ על הכפתור כדי להתחיל סריקה</div>
+<button id="scanBtn">התחל סריקה</button>
+<div id="result">התוצאות יופיעו כאן...</div>
+
+<script>
+const statusEl = document.getElementById('status');
+const resultEl = document.getElementById('result');
+const scanBtn = document.getElementById('scanBtn');
+
+function log(msg, isError = false) {
+  statusEl.textContent = msg;
+  statusEl.style.color = isError ? '#f87171' : '#9ca3af';
+}
+
+function decodeRecord(record) {
+  try {
+    if (record.recordType === "text") {
+      const textDecoder = new TextDecoder(record.encoding || "utf-8");
+      return textDecoder.decode(record.data);
+    } else if (record.recordType === "url") {
+      const textDecoder = new TextDecoder();
+      return textDecoder.decode(record.data);
+    } else {
+      // ננסה לפענח כטקסט רגיל, ואם נכשל נציג hex
+      try {
+        const textDecoder = new TextDecoder("utf-8");
+        return textDecoder.decode(record.data);
+      } catch (e) {
+        const bytes = new Uint8Array(record.data.buffer || record.data);
+        return "[hex]: " + Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join(' ');
+      }
+    }
+  } catch (e) {
+    return "(לא ניתן לפענח)";
+  }
+}
+
+async function startScan() {
+  if (!('NDEFReader' in window)) {
+    log("הדפדפן לא תומך ב-Web NFC. יש להשתמש ב-Chrome על אנדרואיד, עם HTTPS.", true);
+    return;
+  }
+
+  try {
+    const ndef = new NDEFReader();
+    await ndef.scan();
+    log("✅ סורק... קרב תג NFC למכשיר");
+    scanBtn.disabled = true;
+    scanBtn.textContent = "סורק...";
+
+    ndef.addEventListener("readingerror", () => {
+      log("שגיאה בקריאת התג. נסה שוב.", true);
+    });
+
+    ndef.addEventListener("reading", ({ message, serialNumber }) => {
+      log("✅ תג נקרא בהצלחה!");
+
+      let html = `<div class="tag-line"><span class="label">מספר סידורי:</span> ${serialNumber || 'לא זמין'}</div>`;
+
+      if (message.records.length === 0) {
+        html += "התג ריק (אין רשומות NDEF)";
+      } else {
+        message.records.forEach((record, i) => {
+          const decoded = decodeRecord(record);
+          html += `<div class="tag-line">
+            <span class="label">רשומה ${i + 1} (${record.recordType}):</span><br>
+            ${decoded}
+          </div>`;
+        });
+      }
+
+      resultEl.innerHTML = html;
+    });
+
+  } catch (error) {
+    log("שגיאה: " + error.message + " (וודא שהאתר נטען דרך HTTPS ושאישרת הרשאה)", true);
+    scanBtn.disabled = false;
+    scanBtn.textContent = "נסה שוב";
+  }
+}
+
+scanBtn.addEventListener('click', startScan);
+</script>
+
+</body>
+</html>
