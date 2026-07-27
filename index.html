@@ -56,14 +56,108 @@
     border-bottom: 1px solid #374151;
   }
   .label { color: #60a5fa; font-weight: bold; }
+
+  .tabs {
+    display: flex;
+    width: 100%;
+    max-width: 480px;
+    margin-bottom: 20px;
+    background: #1f2937;
+    border-radius: 12px;
+    padding: 4px;
+    gap: 4px;
+  }
+  .tab-btn {
+    flex: 1;
+    background: transparent;
+    color: #9ca3af;
+    border: none;
+    padding: 10px;
+    margin: 0;
+    border-radius: 8px;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  .tab-btn.active {
+    background: #2563eb;
+    color: white;
+  }
+  .panel { display: none; width: 100%; max-width: 480px; }
+  .panel.active { display: flex; flex-direction: column; align-items: center; }
+
+  .field {
+    width: 100%;
+    margin-bottom: 14px;
+  }
+  .field label {
+    display: block;
+    font-size: 13px;
+    color: #9ca3af;
+    margin-bottom: 6px;
+  }
+  .field input {
+    width: 100%;
+    padding: 12px;
+    border-radius: 10px;
+    border: 1px solid #374151;
+    background: #1f2937;
+    color: #f3f4f6;
+    font-size: 15px;
+    direction: ltr;
+    text-align: left;
+  }
+  .url-preview {
+    width: 100%;
+    background: #111827;
+    border: 1px dashed #374151;
+    border-radius: 10px;
+    padding: 12px;
+    font-size: 13px;
+    color: #60a5fa;
+    direction: ltr;
+    text-align: left;
+    word-break: break-all;
+    margin-bottom: 16px;
+  }
+  #writeStatus {
+    font-size: 14px;
+    color: #9ca3af;
+    margin-top: 12px;
+    text-align: center;
+    min-height: 20px;
+  }
 </style>
 </head>
 <body>
 
-<h1>📡 קורא תגי NFC</h1>
-<div id="status">לחץ על הכפתור כדי להתחיל סריקה</div>
-<button id="scanBtn">התחל סריקה</button>
-<div id="result">התוצאות יופיעו כאן...</div>
+<h1>📡 כלי NFC</h1>
+
+<div class="tabs">
+  <button class="tab-btn active" id="tabReadBtn">קריאה</button>
+  <button class="tab-btn" id="tabWriteBtn">כתיבה</button>
+</div>
+
+<!-- פאנל קריאה -->
+<div class="panel active" id="readPanel">
+  <div id="status">לחץ על הכפתור כדי להתחיל סריקה</div>
+  <button id="scanBtn">התחל סריקה</button>
+  <div id="result">התוצאות יופיעו כאן...</div>
+</div>
+
+<!-- פאנל כתיבה -->
+<div class="panel" id="writePanel">
+  <div class="field">
+    <label>כתובת בסיס (Base URL)</label>
+    <input type="text" id="baseUrl" placeholder="https://your-domain.local/index.html" value="https://your-domain.local/index.html">
+  </div>
+  <div class="field">
+    <label>מזהה אזור (zone)</label>
+    <input type="text" id="zoneId" placeholder="A1">
+  </div>
+  <div class="url-preview" id="urlPreview">https://your-domain.local/index.html?zone=</div>
+  <button id="writeBtn">קרב תג וכתוב</button>
+  <div id="writeStatus"></div>
+</div>
 
 <script>
 const statusEl = document.getElementById('status');
@@ -143,6 +237,90 @@ async function startScan() {
 }
 
 scanBtn.addEventListener('click', startScan);
+
+// --- טאבים ---
+const tabReadBtn = document.getElementById('tabReadBtn');
+const tabWriteBtn = document.getElementById('tabWriteBtn');
+const readPanel = document.getElementById('readPanel');
+const writePanel = document.getElementById('writePanel');
+
+tabReadBtn.addEventListener('click', () => {
+  tabReadBtn.classList.add('active');
+  tabWriteBtn.classList.remove('active');
+  readPanel.classList.add('active');
+  writePanel.classList.remove('active');
+});
+
+tabWriteBtn.addEventListener('click', () => {
+  tabWriteBtn.classList.add('active');
+  tabReadBtn.classList.remove('active');
+  writePanel.classList.add('active');
+  readPanel.classList.remove('active');
+});
+
+// --- כתיבה ל-NFC ---
+const baseUrlInput = document.getElementById('baseUrl');
+const zoneIdInput = document.getElementById('zoneId');
+const urlPreview = document.getElementById('urlPreview');
+const writeBtn = document.getElementById('writeBtn');
+const writeStatusEl = document.getElementById('writeStatus');
+
+function buildUrl() {
+  const base = (baseUrlInput.value || '').trim();
+  const zone = (zoneIdInput.value || '').trim();
+  if (!base) return '';
+  const separator = base.includes('?') ? '&' : '?';
+  return zone ? `${base}${separator}zone=${encodeURIComponent(zone)}` : base;
+}
+
+function updatePreview() {
+  const url = buildUrl();
+  urlPreview.textContent = url || 'הזן כתובת בסיס...';
+}
+
+baseUrlInput.addEventListener('input', updatePreview);
+zoneIdInput.addEventListener('input', updatePreview);
+updatePreview();
+
+function writeLog(msg, isError = false) {
+  writeStatusEl.textContent = msg;
+  writeStatusEl.style.color = isError ? '#f87171' : '#9ca3af';
+}
+
+async function writeNFC() {
+  if (!('NDEFReader' in window)) {
+    writeLog("הדפדפן לא תומך ב-Web NFC. יש להשתמש ב-Chrome על אנדרואיד, עם HTTPS.", true);
+    return;
+  }
+
+  const url = buildUrl();
+  if (!url) {
+    writeLog("יש להזין כתובת בסיס תחילה.", true);
+    return;
+  }
+
+  try {
+    const ndef = new NDEFReader();
+    writeLog("קרב תג ריק (או תג לשכתוב) למכשיר...");
+    writeBtn.disabled = true;
+    writeBtn.textContent = "ממתין לתג...";
+
+    await ndef.write({
+      records: [{ recordType: "url", data: url }]
+    });
+
+    writeLog("✅ נכתב בהצלחה! התג עכשיו מפנה ל: " + url);
+    writeBtn.disabled = false;
+    writeBtn.textContent = "קרב תג וכתוב";
+
+  } catch (error) {
+    writeLog("שגיאה בכתיבה: " + error.message, true);
+    writeBtn.disabled = false;
+    writeBtn.textContent = "נסה שוב";
+  }
+}
+
+writeBtn.addEventListener('click', writeNFC);
 </script>
 
 </body>
